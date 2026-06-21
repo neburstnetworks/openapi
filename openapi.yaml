@@ -1,0 +1,1528 @@
+openapi: 3.0.3
+info:
+  title: Neburst OpenAPI
+  description: |
+    Programmatic access to Neburst cloud infrastructure.
+
+    ## Authentication
+
+    All requests must be signed with HMAC-SHA256. Four headers are required on every call:
+
+    | Header | Description |
+    |--------|-------------|
+    | `X-Nb-Key` | Your API Key ID (starts with `nb_key_`) |
+    | `X-Nb-Timestamp` | Current Unix epoch in seconds |
+    | `X-Nb-Nonce` | Unique UUID v4 per request |
+    | `X-Nb-Signature` | Hex-encoded HMAC-SHA256 signature |
+
+    When you create an API key in the Dashboard, you receive a **Base64 combined key** containing both `key_id` and `secret`. All SDKs accept this directly.
+
+    See the [Authentication Guide](docs/authentication.md) for the full signing algorithm and combined key format.
+
+    ## Rate Limiting
+
+    Two layers of rate limiting apply: **60 requests / minute / user** (sliding window) and a minimum interval of **5 seconds** between requests.
+    Every response includes `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers.
+
+    ## Response Envelope
+
+    ```json
+    {
+      "code": 0,
+      "msg": "",
+      "data": { ... }
+    }
+    ```
+    `code = 0` means success. Non-zero codes indicate an error (see Error Codes).
+
+    ## Error Codes
+
+    | Code | Description |
+    |------|-------------|
+    | 0 | Success |
+    | 58200 | Signature verification failed |
+    | 58201 | Request timestamp has expired |
+    | 58202 | Duplicate request detected (nonce replay) |
+    | 58203 | Insufficient scope |
+    | 58204 | Rate limit exceeded |
+    | 58205 | API key has been disabled |
+    | 58206 | API key has expired |
+    | 58207 | Invalid API key |
+    | 58208 | Missing required authentication headers |
+    | 58210 | Business logic error (see `msg` for details) |
+    | 58400 | Invalid request body / parameter validation failed |
+  version: 1.1.0
+  contact:
+    name: Neburst Support
+    url: https://neburst.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.neburst.com/open/v1
+    description: Production
+
+security:
+  - hmacAuth: []
+
+tags:
+  - name: Cloud Instance
+    description: Manage cloud instances -- list, details, status, traffic, power actions, metrics.
+  - name: Bare Metal
+    description: Manage bare-metal instances -- list, details, status, traffic, power actions, metrics, rebuild, rescue.
+  - name: Billing
+    description: Balance and invoice queries.
+  - name: User
+    description: User account information.
+
+paths:
+  # ──────────────────────────────────────────────
+  # Cloud Instance
+  # ──────────────────────────────────────────────
+  /compute/instance/list:
+    get:
+      operationId: listCloudInstances
+      tags: [Cloud Instance]
+      summary: List cloud instances
+      description: Returns all cloud instances owned by the authenticated user, with pagination.
+      security:
+        - hmacAuth: [instance:read]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PaginatedInstances"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/instance/{id}:
+    get:
+      operationId: getCloudInstance
+      tags: [Cloud Instance]
+      summary: Get cloud instance
+      description: Returns a single cloud instance by UUID.
+      security:
+        - hmacAuth: [instance:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/InstanceDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/instance/{id}/status:
+    get:
+      operationId: getCloudInstanceStatus
+      tags: [Cloud Instance]
+      summary: Get cloud instance power status
+      description: Returns the current power state and installation status of a cloud instance.
+      security:
+        - hmacAuth: [instance:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PowerStatusDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/instance/{id}/traffic:
+    get:
+      operationId: getCloudInstanceTraffic
+      tags: [Cloud Instance]
+      summary: Get cloud instance traffic usage
+      description: Returns traffic package allocations and current usage for a cloud instance.
+      security:
+        - hmacAuth: [instance:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TrafficDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/instance/{id}/power:
+    post:
+      operationId: cloudPowerAction
+      tags: [Cloud Instance]
+      summary: Cloud instance power action
+      description: |
+        Perform a power action on a cloud instance.
+
+        | Action | Description |
+        |--------|-------------|
+        | `start` | Start the instance |
+        | `stop` | Graceful shutdown |
+        | `restart` | Reboot the instance |
+      security:
+        - hmacAuth: [instance:power]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloudPowerActionRequest"
+      responses:
+        "200":
+          description: Action accepted
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/instance/{id}/metrics:
+    get:
+      operationId: getCloudMetrics
+      tags: [Cloud Instance]
+      summary: Get cloud instance metrics
+      description: |
+        Returns real-time CPU, memory, disk, network speed, and bandwidth usage.
+        Data is fetched from the hypervisor. Results are cached for 15 seconds.
+      security:
+        - hmacAuth: [instance:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/MetricsDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  # ──────────────────────────────────────────────
+  # Bare Metal
+  # ──────────────────────────────────────────────
+  /compute/bare-metal/list:
+    get:
+      operationId: listBareMetalInstances
+      tags: [Bare Metal]
+      summary: List bare-metal instances
+      description: Returns all bare-metal instances owned by the authenticated user, with pagination.
+      security:
+        - hmacAuth: [bare-metal:read]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PaginatedInstances"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/bare-metal/{id}:
+    get:
+      operationId: getBareMetalInstance
+      tags: [Bare Metal]
+      summary: Get bare-metal instance
+      description: Returns a single bare-metal instance by UUID.
+      security:
+        - hmacAuth: [bare-metal:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/InstanceDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/bare-metal/{id}/status:
+    get:
+      operationId: getBareMetalStatus
+      tags: [Bare Metal]
+      summary: Get bare-metal instance power status
+      description: Returns the current power state and installation status of a bare-metal instance.
+      security:
+        - hmacAuth: [bare-metal:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PowerStatusDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/bare-metal/{id}/traffic:
+    get:
+      operationId: getBareMetalTraffic
+      tags: [Bare Metal]
+      summary: Get bare-metal instance traffic usage
+      description: Returns traffic package allocations and current usage for a bare-metal instance.
+      security:
+        - hmacAuth: [bare-metal:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TrafficDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/bare-metal/{id}/power:
+    post:
+      operationId: bareMetalPowerAction
+      tags: [Bare Metal]
+      summary: Bare-metal power action
+      description: |
+        Perform a power action on a bare-metal instance.
+
+        | Action | Description |
+        |--------|-------------|
+        | `power-on` | Start the instance |
+        | `power-off` | Graceful shutdown |
+        | `power-cycle` | Graceful reboot (off then on) |
+        | `power-reset` | Hard reboot (immediate) |
+      security:
+        - hmacAuth: [bare-metal:power]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PowerActionRequest"
+      responses:
+        "200":
+          description: Action accepted
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/bare-metal/{id}/metrics:
+    get:
+      operationId: getBareMetalMetrics
+      tags: [Bare Metal]
+      summary: Get bare-metal instance metrics
+      description: |
+        Returns network bandwidth rates and traffic package usage statistics.
+        CPU/memory/disk metrics are not available for bare-metal instances.
+        Results are cached for 15 seconds.
+      security:
+        - hmacAuth: [bare-metal:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/MetricsDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/bare-metal/{id}/rebuild:
+    post:
+      operationId: rebuildInstance
+      tags: [Bare Metal]
+      summary: Rebuild instance
+      description: |
+        Reinstall the operating system on a bare-metal instance. This is a **destructive** operation
+        that wipes all data on the instance's disks.
+
+        Use `GET /compute/bare-metal/{id}/profiles` to retrieve available OS profile IDs.
+        The instance must not be locked or in arrears.
+      security:
+        - hmacAuth: [bare-metal:rebuild]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RebuildRequest"
+      responses:
+        "200":
+          description: Rebuild initiated
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/bare-metal/{id}/rescue:
+    post:
+      operationId: rescueInstance
+      tags: [Bare Metal]
+      summary: Boot into rescue mode
+      description: |
+        Boot a bare-metal instance into a rescue/recovery environment. The instance's disks
+        will be mounted but the OS will run from a temporary rescue image.
+        Useful for data recovery, fixing boot issues, or resetting passwords.
+
+        Use `GET /compute/bare-metal/{id}/rescue-profiles` to retrieve available rescue profile IDs.
+        The instance must not be locked or in arrears.
+      security:
+        - hmacAuth: [bare-metal:rescue]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RescueRequest"
+      responses:
+        "200":
+          description: Rescue mode initiated
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/bare-metal/{id}/profiles:
+    get:
+      operationId: getReinstallProfiles
+      tags: [Bare Metal]
+      summary: List OS profiles for rebuild
+      description: |
+        Returns available operating system profiles that can be used with the rebuild endpoint.
+        Only includes normal OS profiles (excludes rescue, password-reset, and special profiles).
+      security:
+        - hmacAuth: [bare-metal:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/OSProfileDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/bare-metal/{id}/rescue-profiles:
+    get:
+      operationId: getRescueProfiles
+      tags: [Bare Metal]
+      summary: List OS profiles for rescue mode
+      description: |
+        Returns available rescue mode profiles that can be used with the rescue endpoint.
+        Rescue mode boots the instance from a temporary recovery image while keeping
+        the original disks mounted for data recovery.
+      security:
+        - hmacAuth: [bare-metal:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/OSProfileDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  # ──────────────────────────────────────────────
+  # Billing
+  # ──────────────────────────────────────────────
+  /billing/balance:
+    get:
+      operationId: getBalance
+      tags: [Billing]
+      summary: Get account balance
+      description: Returns the current account balance breakdown.
+      security:
+        - hmacAuth: [billing:read]
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/BalanceDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /billing/invoices:
+    get:
+      operationId: listInvoices
+      tags: [Billing]
+      summary: List invoices
+      description: Returns invoices for the authenticated user, with pagination.
+      security:
+        - hmacAuth: [billing:read]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PaginatedInvoices"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /billing/invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [Billing]
+      summary: Get invoice
+      description: Returns a single invoice by UUID.
+      security:
+        - hmacAuth: [billing:read]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Invoice UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/InvoiceDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  # ──────────────────────────────────────────────
+  # User
+  # ──────────────────────────────────────────────
+  /user/info:
+    get:
+      operationId: getUserInfo
+      tags: [User]
+      summary: Get user info
+      description: Returns the authenticated user's account information.
+      security:
+        - hmacAuth: [user:read]
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/UserInfoDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+# ════════════════════════════════════════════════
+# Components
+# ════════════════════════════════════════════════
+components:
+  # ── Security Schemes ──
+  securitySchemes:
+    hmacAuth:
+      type: apiKey
+      in: header
+      name: X-Nb-Signature
+      description: |
+        HMAC-SHA256 request signing. Every request must include four headers:
+
+        - **X-Nb-Key** -- API Key ID (`nb_key_` + 24 hex chars)
+        - **X-Nb-Timestamp** -- Unix epoch seconds (must be within +/-5 minutes of server time)
+        - **X-Nb-Nonce** -- UUID v4, unique per request (10-minute replay window)
+        - **X-Nb-Signature** -- `Hex(HMAC-SHA256(api_secret, string_to_sign))`
+
+        **String to sign:**
+        ```
+        {timestamp}\n{METHOD}\n{path}\n{sorted_query}\n{sha256_hex(body)}
+        ```
+
+  # ── Parameters ──
+  parameters:
+    InstanceId:
+      name: id
+      in: path
+      required: true
+      description: Instance UUID
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Page number (1-based, default 1)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      description: Items per page (1-100, default 20)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  # ── Headers ──
+  headers:
+    X-RateLimit-Limit:
+      description: Maximum requests allowed in the current window
+      schema:
+        type: integer
+        example: 60
+    X-RateLimit-Remaining:
+      description: Requests remaining in the current window
+      schema:
+        type: integer
+        example: 57
+    X-RateLimit-Reset:
+      description: Unix timestamp (seconds) when the current window resets
+      schema:
+        type: integer
+        example: 1750291200
+
+  # ── Reusable Responses ──
+  responses:
+    Unauthorized:
+      description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseResponse"
+          examples:
+            invalidSignature:
+              summary: Invalid signature
+              value:
+                code: 58200
+                msg: "Signature verification failed"
+            expiredTimestamp:
+              summary: Expired timestamp
+              value:
+                code: 58201
+                msg: "Request timestamp has expired"
+            duplicateNonce:
+              summary: Duplicate nonce
+              value:
+                code: 58202
+                msg: "Duplicate request detected"
+            keyDisabled:
+              summary: Key disabled
+              value:
+                code: 58205
+                msg: "API key has been disabled"
+            keyExpired:
+              summary: Key expired
+              value:
+                code: 58206
+                msg: "API key has expired"
+            keyNotFound:
+              summary: Key not found
+              value:
+                code: 58207
+                msg: "Invalid API key"
+            missingHeaders:
+              summary: Missing headers
+              value:
+                code: 58208
+                msg: "Missing required authentication headers"
+    Forbidden:
+      description: Insufficient scope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseResponse"
+          example:
+            code: 58203
+            msg: "Insufficient scope"
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          $ref: "#/components/headers/X-RateLimit-Limit"
+        X-RateLimit-Remaining:
+          $ref: "#/components/headers/X-RateLimit-Remaining"
+        X-RateLimit-Reset:
+          $ref: "#/components/headers/X-RateLimit-Reset"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseResponse"
+          example:
+            code: 58204
+            msg: "Rate limit exceeded"
+    BusinessError:
+      description: Business logic error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseResponse"
+          examples:
+            businessError:
+              summary: General business error
+              value:
+                code: 58210
+                msg: "instance not found"
+            validationError:
+              summary: Parameter validation failed
+              value:
+                code: 58400
+                msg: "invalid request body"
+
+  # ── Schemas ──
+  schemas:
+    BaseResponse:
+      type: object
+      required: [code, msg]
+      properties:
+        code:
+          type: integer
+          description: |
+            Application-level status code. `0` indicates success.
+            Non-zero values are Neburst error codes (see Error Codes).
+          example: 0
+        msg:
+          type: string
+          description: Human-readable message. Empty string on success.
+          example: ""
+
+    # ── Pagination ──
+    PaginatedInstances:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InstanceDTO"
+        total:
+          type: integer
+          description: Total number of instances
+          example: 5
+        page:
+          type: integer
+          description: Current page number
+          example: 1
+        page_size:
+          type: integer
+          description: Items per page
+          example: 20
+
+    PaginatedInvoices:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceDTO"
+        total:
+          type: integer
+          description: Total number of invoices
+          example: 42
+        page:
+          type: integer
+          description: Current page number
+          example: 1
+        page_size:
+          type: integer
+          description: Items per page
+          example: 20
+
+    # ── DTOs ──
+    InstanceDTO:
+      type: object
+      required: [uuid, name, type, status, auto_renew, created_at]
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique instance identifier
+        name:
+          type: string
+          description: User-defined instance name
+        type:
+          type: string
+          enum: [bare_metal, cloud]
+          description: Instance type
+        status:
+          type: string
+          description: |
+            Current lifecycle status.
+
+            **Bare-metal**: `unallocated`, `provisioning`, `allocated`
+
+            **Cloud**: `running`, `stopped`, `starting`, `restarting`, `stopping`,
+            `pending`, `provisioning`, `deleting`, `terminating`, `terminated`,
+            `error`, `failed`, `maintenance`, `upgrading`
+        region:
+          type: string
+          description: Datacenter region
+        hostname:
+          type: string
+          description: Instance hostname
+        pay_cycle:
+          type: string
+          description: Billing cycle (monthly, quarterly, semi-annually, annually)
+        auto_renew:
+          type: boolean
+          description: Whether automatic renewal is enabled
+        next_pay_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Next billing date (ISO 8601)
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp (ISO 8601)
+        primary_ipv4:
+          type: string
+          description: Primary IPv4 address
+        ipv4_list:
+          type: array
+          items:
+            type: string
+          description: All assigned IPv4 addresses
+        ipv6_list:
+          type: array
+          items:
+            type: string
+          description: All assigned IPv6 addresses
+        specs:
+          $ref: "#/components/schemas/InstanceSpecsDTO"
+        os_name:
+          type: string
+          description: Installed operating system name
+
+    InstanceSpecsDTO:
+      type: object
+      description: Instance hardware specifications
+      properties:
+        cpu_model:
+          type: string
+          description: CPU model name
+          example: "Intel Xeon E5-2680 v4"
+        cpu_cores:
+          type: integer
+          description: Total CPU cores
+          example: 28
+        memory_gb:
+          type: integer
+          description: Memory in gigabytes
+          example: 64
+        disks:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiskDTO"
+          description: Disk configuration
+        network_speed_gbps:
+          type: number
+          format: float
+          description: Network port speed in Gbps
+          example: 1.0
+
+    DiskDTO:
+      type: object
+      required: [type, size_gb, quantity]
+      properties:
+        type:
+          type: string
+          description: Disk type (ssd, hdd, nvme)
+          example: "ssd"
+        size_gb:
+          type: integer
+          description: Disk size in gigabytes
+          example: 480
+        quantity:
+          type: integer
+          description: Number of disks
+          example: 2
+
+    PowerStatusDTO:
+      type: object
+      required: [status, is_installing]
+      properties:
+        status:
+          type: string
+          enum: ["on", "off"]
+          description: Current power state
+        is_installing:
+          type: boolean
+          description: Whether the instance is currently being provisioned/reinstalled
+
+    TrafficDTO:
+      type: object
+      required: [packages]
+      properties:
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrafficPackageDTO"
+
+    TrafficPackageDTO:
+      type: object
+      required: [name, capacity_gb, used_gb]
+      properties:
+        name:
+          type: string
+          description: Traffic package name
+        capacity_gb:
+          type: integer
+          description: Total capacity in gigabytes
+        used_gb:
+          type: number
+          format: float
+          description: Current usage in gigabytes
+        reset_cycle:
+          type: string
+          description: When the counter resets (monthly, quarterly, etc.)
+
+    MetricsDTO:
+      type: object
+      description: Instance resource usage metrics
+      properties:
+        cpu:
+          $ref: "#/components/schemas/CpuMetricsDTO"
+        memory:
+          $ref: "#/components/schemas/MemoryMetricsDTO"
+        disk:
+          $ref: "#/components/schemas/DiskMetricsDTO"
+        bandwidth:
+          $ref: "#/components/schemas/BandwidthMetricsDTO"
+        network:
+          $ref: "#/components/schemas/NetworkMetricsDTO"
+
+    CpuMetricsDTO:
+      type: object
+      description: CPU usage metrics
+      properties:
+        percentage:
+          type: number
+          format: float
+          description: CPU usage percentage (0-100)
+          example: 42.5
+
+    MemoryMetricsDTO:
+      type: object
+      description: Memory usage metrics
+      properties:
+        limit:
+          type: number
+          format: float
+          description: Total memory
+          example: 8192.0
+        usage:
+          type: number
+          format: float
+          description: Used memory
+          example: 4096.0
+        free:
+          type: number
+          format: float
+          description: Free memory
+          example: 4096.0
+        percentage:
+          type: number
+          format: float
+          description: Memory usage percentage (0-100)
+          example: 50.0
+        unit:
+          type: string
+          description: Unit of measurement
+          example: "MB"
+
+    DiskMetricsDTO:
+      type: object
+      description: Disk usage metrics
+      properties:
+        limit:
+          type: number
+          format: float
+          description: Total disk space
+          example: 480.0
+        usage:
+          type: number
+          format: float
+          description: Used disk space
+          example: 120.0
+        free:
+          type: number
+          format: float
+          description: Free disk space
+          example: 360.0
+        percentage:
+          type: number
+          format: float
+          description: Disk usage percentage (0-100)
+          example: 25.0
+        unit:
+          type: string
+          description: Unit of measurement
+          example: "GB"
+
+    BandwidthMetricsDTO:
+      type: object
+      description: Bandwidth and traffic usage metrics
+      properties:
+        limit:
+          type: number
+          format: float
+          description: Total bandwidth limit
+          example: 2.0
+        allowance:
+          type: number
+          format: float
+          description: Total traffic allowance
+          example: 2048.0
+        usage:
+          type: number
+          format: float
+          description: Traffic used
+          example: 512.0
+        inbound:
+          type: number
+          format: float
+          description: Inbound traffic
+          example: 256.0
+        outbound:
+          type: number
+          format: float
+          description: Outbound traffic
+          example: 256.0
+        free:
+          type: number
+          format: float
+          description: Remaining traffic
+          example: 1536.0
+        percentage:
+          type: number
+          format: float
+          description: Traffic usage percentage (0-100)
+          example: 25.0
+        usage_unit:
+          type: string
+          description: Unit for usage values
+          example: "GB"
+        limit_unit:
+          type: string
+          description: Unit for limit value
+          example: "TB"
+        started_time:
+          type: string
+          format: date-time
+          description: Start of the current billing period (ISO 8601)
+          example: "2026-01-01T00:00:00Z"
+        end_time:
+          type: string
+          format: date-time
+          description: End of the current billing period (ISO 8601)
+          example: "2026-02-01T00:00:00Z"
+
+    NetworkMetricsDTO:
+      type: object
+      description: Real-time network speed metrics
+      properties:
+        inbound:
+          type: number
+          format: float
+          description: Current inbound speed
+          example: 125.5
+        outbound:
+          type: number
+          format: float
+          description: Current outbound speed
+          example: 80.2
+        unit:
+          type: string
+          description: Unit of measurement
+          example: "Mbps"
+
+    OSProfileDTO:
+      type: object
+      required: [id, name, category, is_rescue]
+      properties:
+        id:
+          type: integer
+          description: Profile ID, used as `profile_id` in rebuild/rescue requests
+          example: 123
+        name:
+          type: string
+          description: OS profile name (e.g. "Ubuntu 22.04 LTS")
+          example: "Ubuntu 22.04 LTS"
+        category:
+          type: string
+          description: OS family group (e.g. "Ubuntu", "CentOS")
+          example: "Ubuntu"
+        is_rescue:
+          type: boolean
+          description: Whether this is a rescue mode profile
+        features:
+          type: object
+          properties:
+            allow_ssh_keys:
+              type: boolean
+              description: Whether SSH key injection is supported
+            allow_set_hostname:
+              type: boolean
+              description: Whether custom hostname is supported
+
+    BalanceDTO:
+      type: object
+      required: [available, locked, currency]
+      properties:
+        available:
+          type: number
+          format: float
+          description: Spendable balance
+          example: 128.50
+        locked:
+          type: number
+          format: float
+          description: Balance reserved for pending orders
+          example: 12.00
+        currency:
+          type: string
+          enum: [USD]
+          description: Currency code (always USD)
+
+    InvoiceDTO:
+      type: object
+      required: [uuid, amount, status, category, created_at]
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique invoice identifier
+        amount:
+          type: number
+          format: float
+          description: Invoice amount in USD
+        status:
+          type: string
+          enum: [paid, partially-paid, unpaid, refunded, partially-refunded, refunding, cancelled, fallback-to-balance]
+          description: Invoice status
+        category:
+          type: string
+          enum: [compute, topup, traffic, penalty, custom]
+          description: Invoice category
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp (ISO 8601)
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Payment due date (ISO 8601)
+
+    UserInfoDTO:
+      type: object
+      required: [uuid, email]
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: User UUID
+        email:
+          type: string
+          format: email
+          description: User email address
+        nickname:
+          type: string
+          description: Nickname
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp (ISO 8601)
+
+    # ── Request Bodies ──
+    PowerActionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [power-on, power-off, power-cycle, power-reset]
+          description: Power action to execute
+
+    CloudPowerActionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [start, stop, restart]
+          description: Power action to execute on a cloud instance
+
+    RebuildRequest:
+      type: object
+      required: [profile_id]
+      properties:
+        profile_id:
+          type: integer
+          description: "OS profile ID (from GET /compute/bare-metal/{id}/profiles)"
+          example: 123
+        hostname:
+          type: string
+          description: New hostname for the instance
+        public_keys:
+          type: array
+          items:
+            type: string
+          description: SSH public keys to inject
+
+    RescueRequest:
+      type: object
+      required: [profile_id]
+      properties:
+        profile_id:
+          type: integer
+          description: "Rescue profile ID (from GET /compute/bare-metal/{id}/rescue-profiles)"
+          example: 456
