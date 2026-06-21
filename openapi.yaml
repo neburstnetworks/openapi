@@ -1,0 +1,819 @@
+openapi: 3.0.3
+info:
+  title: Neburst OpenAPI
+  description: |
+    Programmatic access to Neburst cloud infrastructure.
+
+    ## Authentication
+
+    All requests must be signed with HMAC-SHA256. Four headers are required on every call:
+
+    | Header | Description |
+    |--------|-------------|
+    | `X-Nb-Key` | Your API Key ID (starts with `nb_key_`) |
+    | `X-Nb-Timestamp` | Current Unix epoch in seconds |
+    | `X-Nb-Nonce` | Unique UUID v4 per request |
+    | `X-Nb-Signature` | Hex-encoded HMAC-SHA256 signature |
+
+    See the [Authentication Guide](docs/authentication.md) for the full signing algorithm.
+
+    ## Rate Limiting
+
+    All endpoints share a **60 requests / minute / user** sliding window.
+    Every response includes `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers.
+
+    ## Response Envelope
+
+    ```json
+    {
+      "code": 0,
+      "msg": "",
+      "data": { ... }
+    }
+    ```
+    `code = 0` means success. Non-zero codes indicate an error (see Error Codes).
+  version: 1.0.0
+  contact:
+    name: Neburst Support
+    url: https://neburst.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.neburst.com/open/v1
+    description: Production
+
+security:
+  - hmacAuth: []
+
+tags:
+  - name: Compute
+    description: Manage cloud and bare-metal instances
+  - name: Billing
+    description: Balance and invoice queries
+
+paths:
+  # ──────────────────────────────────────────────
+  # Compute - Instances
+  # ──────────────────────────────────────────────
+  /compute/instances:
+    get:
+      operationId: listInstances
+      tags: [Compute]
+      summary: List instances
+      description: Returns all instances owned by the authenticated user.
+      security:
+        - hmacAuth: [compute:read]
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/InstanceDTO"
+              example:
+                code: 0
+                msg: ""
+                data:
+                  - uuid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                    name: "web-prod-01"
+                    type: "bare_metal"
+                    status: "active"
+                    region: "Los Angeles"
+                    hostname: "web-prod-01.neburst.net"
+                    pay_cycle: "monthly"
+                    auto_renew: true
+                    next_pay_at: "2026-07-18T00:00:00Z"
+                    created_at: "2025-12-01T08:30:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/instances/{id}:
+    get:
+      operationId: getInstance
+      tags: [Compute]
+      summary: Get instance
+      description: Returns a single instance by UUID.
+      security:
+        - hmacAuth: [compute:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/InstanceDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/instances/{id}/status:
+    get:
+      operationId: getInstanceStatus
+      tags: [Compute]
+      summary: Get power status
+      description: Returns the current power state and installation status of an instance.
+      security:
+        - hmacAuth: [compute:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PowerStatusDTO"
+              example:
+                code: 0
+                msg: ""
+                data:
+                  status: "on"
+                  is_installing: false
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/instances/{id}/traffic:
+    get:
+      operationId: getInstanceTraffic
+      tags: [Compute]
+      summary: Get traffic usage
+      description: Returns traffic package allocations and current usage for an instance.
+      security:
+        - hmacAuth: [compute:read]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TrafficDTO"
+              example:
+                code: 0
+                msg: ""
+                data:
+                  packages:
+                    - name: "Monthly Traffic"
+                      capacity_gb: 2000
+                      used_gb: 843.27
+                      reset_cycle: "monthly"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/instances/{id}/power:
+    post:
+      operationId: powerAction
+      tags: [Compute]
+      summary: Execute power action
+      description: |
+        Perform a power action on an instance.
+
+        | Action | Description |
+        |--------|-------------|
+        | `power-on` | Start the instance |
+        | `power-off` | Graceful shutdown |
+        | `power-cycle` | Graceful reboot (off then on) |
+        | `power-reset` | Hard reboot (immediate) |
+      security:
+        - hmacAuth: [compute:power]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PowerActionRequest"
+            example:
+              action: "power-cycle"
+      responses:
+        "200":
+          description: Action accepted
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaseResponse"
+              example:
+                code: 0
+                msg: ""
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/instances/{id}/rebuild:
+    post:
+      operationId: rebuildInstance
+      tags: [Compute]
+      summary: Rebuild instance
+      description: |
+        Reinstall the operating system on an instance. This is a **destructive** operation
+        that wipes all data on the instance's disks.
+      security:
+        - hmacAuth: [compute:rebuild]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RebuildRequest"
+            example:
+              profile_id: 123
+              hostname: "web-prod-01"
+              public_keys:
+                - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@host"
+      responses:
+        "200":
+          description: Rebuild initiated
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaseResponse"
+              example:
+                code: 0
+                msg: ""
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /compute/instances/{id}/rescue:
+    post:
+      operationId: rescueInstance
+      tags: [Compute]
+      summary: Boot into rescue mode
+      description: |
+        Boot an instance into a rescue/recovery environment. The instance's disks
+        will be mounted but the OS will run from a temporary rescue image.
+      security:
+        - hmacAuth: [compute:rescue]
+      parameters:
+        - $ref: "#/components/parameters/InstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RescueRequest"
+            example:
+              profile_id: 456
+      responses:
+        "200":
+          description: Rescue mode initiated
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaseResponse"
+              example:
+                code: 0
+                msg: ""
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  # ──────────────────────────────────────────────
+  # Billing
+  # ──────────────────────────────────────────────
+  /billing/balance:
+    get:
+      operationId: getBalance
+      tags: [Billing]
+      summary: Get account balance
+      description: Returns the current account balance breakdown.
+      security:
+        - hmacAuth: [billing:read]
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/BalanceDTO"
+              example:
+                code: 0
+                msg: ""
+                data:
+                  available: 128.50
+                  locked: 12.00
+                  currency: "USD"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /billing/invoices:
+    get:
+      operationId: listInvoices
+      tags: [Billing]
+      summary: List invoices
+      description: Returns all invoices for the authenticated user.
+      security:
+        - hmacAuth: [billing:read]
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/InvoiceDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /billing/invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [Billing]
+      summary: Get invoice
+      description: Returns a single invoice by UUID.
+      security:
+        - hmacAuth: [billing:read]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Invoice UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BaseResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/InvoiceDTO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+# ════════════════════════════════════════════════
+# Components
+# ════════════════════════════════════════════════
+components:
+  # ── Security Schemes ──
+  securitySchemes:
+    hmacAuth:
+      type: apiKey
+      in: header
+      name: X-Nb-Signature
+      description: |
+        HMAC-SHA256 request signing. Every request must include four headers:
+
+        - **X-Nb-Key** -- API Key ID (`nb_key_` + 24 hex chars)
+        - **X-Nb-Timestamp** -- Unix epoch seconds (must be within +/-5 minutes of server time)
+        - **X-Nb-Nonce** -- UUID v4, unique per request (10-minute replay window)
+        - **X-Nb-Signature** -- `Hex(HMAC-SHA256(api_secret, string_to_sign))`
+
+        **String to sign:**
+        ```
+        {timestamp}\n{METHOD}\n{path}\n{sorted_query}\n{sha256_hex(body)}
+        ```
+
+  # ── Parameters ──
+  parameters:
+    InstanceId:
+      name: id
+      in: path
+      required: true
+      description: Instance UUID
+      schema:
+        type: string
+        format: uuid
+
+  # ── Headers ──
+  headers:
+    X-RateLimit-Limit:
+      description: Maximum requests allowed in the current window
+      schema:
+        type: integer
+        example: 60
+    X-RateLimit-Remaining:
+      description: Requests remaining in the current window
+      schema:
+        type: integer
+        example: 57
+    X-RateLimit-Reset:
+      description: Unix timestamp (seconds) when the current window resets
+      schema:
+        type: integer
+        example: 1750291200
+
+  # ── Reusable Responses ──
+  responses:
+    Unauthorized:
+      description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseResponse"
+          examples:
+            invalidSignature:
+              summary: Invalid signature
+              value:
+                code: 58200
+                msg: "Signature verification failed"
+            expiredTimestamp:
+              summary: Expired timestamp
+              value:
+                code: 58201
+                msg: "Request timestamp has expired"
+            duplicateNonce:
+              summary: Duplicate nonce
+              value:
+                code: 58202
+                msg: "Duplicate request detected"
+            keyDisabled:
+              summary: Key disabled
+              value:
+                code: 58205
+                msg: "API key has been disabled"
+            keyExpired:
+              summary: Key expired
+              value:
+                code: 58206
+                msg: "API key has expired"
+            keyNotFound:
+              summary: Key not found
+              value:
+                code: 58207
+                msg: "Invalid API key"
+            missingHeaders:
+              summary: Missing headers
+              value:
+                code: 58208
+                msg: "Missing required authentication headers"
+    Forbidden:
+      description: Insufficient scope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseResponse"
+          example:
+            code: 58203
+            msg: "Insufficient scope"
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          $ref: "#/components/headers/X-RateLimit-Limit"
+        X-RateLimit-Remaining:
+          $ref: "#/components/headers/X-RateLimit-Remaining"
+        X-RateLimit-Reset:
+          $ref: "#/components/headers/X-RateLimit-Reset"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseResponse"
+          example:
+            code: 58204
+            msg: "Rate limit exceeded"
+
+  # ── Schemas ──
+  schemas:
+    BaseResponse:
+      type: object
+      required: [code, msg]
+      properties:
+        code:
+          type: integer
+          description: |
+            Application-level status code. `0` indicates success.
+            Non-zero values are Neburst error codes (see Error Codes).
+          example: 0
+        msg:
+          type: string
+          description: Human-readable message. Empty string on success.
+          example: ""
+
+    # ── DTOs ──
+    InstanceDTO:
+      type: object
+      required: [uuid, name, type, status, auto_renew, created_at]
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique instance identifier
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        name:
+          type: string
+          description: User-defined instance name
+          example: "web-prod-01"
+        type:
+          type: string
+          enum: [bare_metal, cloud]
+          description: Instance type
+          example: "bare_metal"
+        status:
+          type: string
+          description: Current lifecycle status
+          example: "active"
+        region:
+          type: string
+          description: Datacenter region
+          example: "Los Angeles"
+        hostname:
+          type: string
+          description: Instance hostname
+          example: "web-prod-01.neburst.net"
+        pay_cycle:
+          type: string
+          description: Billing cycle
+          example: "monthly"
+        auto_renew:
+          type: boolean
+          description: Whether automatic renewal is enabled
+          example: true
+        next_pay_at:
+          type: string
+          format: date-time
+          description: Next billing date (ISO 8601)
+          example: "2026-07-18T00:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp (ISO 8601)
+          example: "2025-12-01T08:30:00Z"
+
+    PowerStatusDTO:
+      type: object
+      required: [status, is_installing]
+      properties:
+        status:
+          type: string
+          enum: ["on", "off"]
+          description: Current power state
+          example: "on"
+        is_installing:
+          type: boolean
+          description: Whether the instance is currently being provisioned/reinstalled
+          example: false
+
+    TrafficDTO:
+      type: object
+      required: [packages]
+      properties:
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrafficPackageDTO"
+
+    TrafficPackageDTO:
+      type: object
+      required: [name, capacity_gb, used_gb]
+      properties:
+        name:
+          type: string
+          description: Traffic package name
+          example: "Monthly Traffic"
+        capacity_gb:
+          type: integer
+          description: Total capacity in gigabytes
+          example: 2000
+        used_gb:
+          type: number
+          format: float
+          description: Current usage in gigabytes
+          example: 843.27
+        reset_cycle:
+          type: string
+          description: When the counter resets
+          example: "monthly"
+
+    BalanceDTO:
+      type: object
+      required: [available, locked, currency]
+      properties:
+        available:
+          type: number
+          format: float
+          description: Spendable balance
+          example: 128.50
+        locked:
+          type: number
+          format: float
+          description: Balance reserved for pending orders
+          example: 12.00
+        currency:
+          type: string
+          enum: [USD]
+          description: Currency code (always USD)
+          example: "USD"
+
+    InvoiceDTO:
+      type: object
+      required: [uuid, amount, status, category, created_at]
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique invoice identifier
+          example: "f9e8d7c6-b5a4-3210-fedc-ba9876543210"
+        amount:
+          type: number
+          format: float
+          description: Invoice amount in USD
+          example: 29.99
+        status:
+          type: string
+          description: Invoice status
+          example: "paid"
+        category:
+          type: string
+          description: Invoice category
+          example: "compute"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp (ISO 8601)
+          example: "2026-06-01T00:00:00Z"
+        due_at:
+          type: string
+          format: date-time
+          description: Payment due date (ISO 8601)
+          example: "2026-06-15T00:00:00Z"
+
+    # ── Request Bodies ──
+    PowerActionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [power-on, power-off, power-cycle, power-reset]
+          description: Power action to execute
+
+    RebuildRequest:
+      type: object
+      required: [profile_id]
+      properties:
+        profile_id:
+          type: integer
+          description: OS profile ID to install
+          example: 123
+        hostname:
+          type: string
+          description: New hostname for the instance
+          example: "web-prod-01"
+        public_keys:
+          type: array
+          items:
+            type: string
+          description: SSH public keys to inject
+          example:
+            - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@host"
+
+    RescueRequest:
+      type: object
+      required: [profile_id]
+      properties:
+        profile_id:
+          type: integer
+          description: Rescue OS profile ID
+          example: 456
