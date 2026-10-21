@@ -3,3 +3,16 @@ __pycache__/
 *.pyo
 .DS_Store
 sdk/rust/target/
+
+# AOCI agent host integration (machine-bound; do not commit)
+.mcp.json
+.mcp.json.backup.*
+
+# AOCI 生成的仓库索引（本机使用，不入库）
+.aoci/
+aoci.txt
+aoci.code.txt
+aoci.meta.txt
+AGENTS.md.backup.*
+/AGENTS.md
+/.gitattributes
